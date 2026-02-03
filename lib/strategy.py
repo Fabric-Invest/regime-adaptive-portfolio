@@ -36,6 +36,7 @@ except ImportError:
 from lib.regime_detector import RegimeDetector, RegimeConfig, Regime, z_score_normalize
 from lib.portfolio_allocator import PortfolioAllocator, AllocationConfig, Allocation
 from lib.data.funding_fetcher import FundingFetcher, MockFundingFetcher
+from lib.data.price_fetcher import PriceFetcher, MockPriceFetcher
 from lib.indicators.momentum import MomentumCalculator
 from lib.indicators.volatility import VolatilityCalculator
 from lib.indicators.ma_spreads import MASpreadCalculator
@@ -177,6 +178,16 @@ class RegimeAdaptiveStrategy(Strategy):
             logger.info("Using mock funding fetcher (dev mode)")
         else:
             self.funding_fetcher = FundingFetcher()
+        # Price fetcher for 12-week momentum (84+ days of daily prices)
+        coin_to_cg = {
+            c: info.get("coingecko_id", c)
+            for c, info in self.config.get("tokens", {}).items()
+        }
+        if dev_mode:
+            self.price_fetcher = MockPriceFetcher()
+            logger.info("Using mock price fetcher (dev mode); 12w momentum will be empty until Fabric supplies data")
+        else:
+            self.price_fetcher = PriceFetcher(coin_to_coingecko_id=coin_to_cg)
     
     def before_loop(self):
         """
@@ -232,11 +243,12 @@ class RegimeAdaptiveStrategy(Strategy):
         """
         Load historical price data for all core coins.
         
-        In production, this would fetch from Fabric SDK data feeds.
-        For development/backtesting, this can load from CSV files.
+        Needed for 12-week momentum (84+ days). Tries Fabric SDK if available,
+        then falls back to price fetcher (e.g. CoinGecko).
         """
         historical_days = self.config.get('data', {}).get('historical_days', 200)
-        logger.info(f"Loading {historical_days} days of historical data...")
+        momentum_period = self.config.get('data', {}).get('momentum_period', 84)
+        logger.info(f"Loading {historical_days} days of historical data (12w momentum needs {momentum_period}+ days)...")
         
         # Initialize empty DataFrames for each data type
         self.historical_data = {
@@ -248,11 +260,65 @@ class RegimeAdaptiveStrategy(Strategy):
             'divergence': pd.DataFrame(),
         }
         
-        # In production, fetch from Fabric SDK
-        # For now, initialize with empty data
-        # The actual data loading will depend on the execution environment
+        # Try cached file first (from scripts/fetch_historical_prices.py) for local testing
+        cache_path = Path(__file__).parent.parent / "data" / "historical_prices.csv"
+        if cache_path.exists():
+            try:
+                prices_df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+                if not prices_df.empty and len(prices_df) >= momentum_period:
+                    # Align columns to core_coins (config may have subset)
+                    prices_df = prices_df.reindex(columns=[c for c in self.core_coins if c in prices_df.columns]).dropna(how="all")
+                    if not prices_df.empty:
+                        self.historical_data["prices"] = prices_df
+                        logger.info(f"Loaded {len(prices_df)} days of prices from cache {cache_path}")
+            except Exception as e:
+                logger.warning(f"Cache load failed: {e}")
+        
+        # Try Fabric SDK if it provides historical candles (Type-2 multi-asset)
+        if self.historical_data["prices"].empty and self.fabric_client and hasattr(self.fabric_client, 'get_candles'):
+            try:
+                prices_df = self._fetch_prices_from_fabric(historical_days)
+                if not prices_df.empty and len(prices_df) >= momentum_period:
+                    self.historical_data['prices'] = prices_df
+                    logger.info(f"Loaded {len(prices_df)} days of prices from Fabric SDK")
+            except Exception as e:
+                logger.warning(f"Fabric price fetch failed, using fallback: {e}")
+        
+        # Fallback: price fetcher (e.g. CoinGecko) so 12-week momentum has data
+        if self.historical_data["prices"].empty and hasattr(self, "price_fetcher"):
+            try:
+                prices_df = self.price_fetcher.fetch_historical_prices(days=historical_days)
+                if not prices_df.empty:
+                    self.historical_data['prices'] = prices_df
+                    logger.info(f"Loaded {len(prices_df)} days of prices from price fetcher ({list(prices_df.columns)})")
+            except Exception as e:
+                logger.warning(f"Price fetcher failed: {e}")
+        
+        if self.historical_data['prices'].empty:
+            logger.warning("No historical prices loaded; 12-week momentum and regime inputs will be empty until data is available")
         
         logger.info("Historical data initialized")
+    
+    def _fetch_prices_from_fabric(self, days: int) -> pd.DataFrame:
+        """Build prices DataFrame from Fabric SDK get_candles (if API exists)."""
+        out = {}
+        for coin in self.core_coins:
+            symbol = self.token_symbols.get(coin, coin.upper())
+            candles = self.fabric_client.get_candles(symbol=symbol, timeframe="1d", limit=days)
+            if candles is not None and len(candles) > 0:
+                # Assume candles is array of [ts, o, h, l, c, v] or similar
+                if hasattr(candles, '__iter__') and not isinstance(candles, (str, dict)):
+                    arr = list(candles)
+                    if arr and len(arr[0]) >= 5:
+                        closes = [float(c[4]) for c in arr]
+                        # Use last column as close; timestamps from first column if needed
+                        ts = [float(c[0]) for c in arr] if len(arr[0]) > 0 else range(len(closes))
+                        out[coin] = pd.Series(closes, index=pd.to_datetime(ts, unit='ms'))
+                    elif arr and len(arr[0]) == 2:
+                        out[coin] = pd.Series([float(c[1]) for c in arr], index=pd.to_datetime([c[0] for c in arr], unit='ms'))
+        if not out:
+            return pd.DataFrame()
+        return pd.DataFrame(out)
     
     def should_rebalance(self) -> bool:
         """
@@ -620,8 +686,15 @@ class RegimeAdaptiveStrategy(Strategy):
         self.before_loop()
         
         try:
+            import time
+            dev_mode = os.getenv('FABRIC_DEV_MODE', 'false').lower() == 'true'
+            # In dev, run at most N iterations (default 1); 0 = no limit
+            dev_iterations = int(os.getenv('FABRIC_DEV_ITERATIONS', '1'))
+            iteration = 0
+
             # Main loop (for live execution)
             while True:
+                iteration += 1
                 # Update regime
                 old_regime = self.regime_detector.current_regime
                 new_regime = self.update_regime()
@@ -638,15 +711,16 @@ class RegimeAdaptiveStrategy(Strategy):
                 # Report metrics
                 self.report_metrics()
                 
-                # In production, wait for next candle
-                # For testing, break after one iteration
-                if os.getenv('FABRIC_DEV_MODE', 'false').lower() == 'true':
-                    logger.info("Dev mode: exiting after one iteration")
+                # In dev mode: exit after N iterations (default 1) so local runs don't run forever
+                if dev_mode and dev_iterations > 0 and iteration >= dev_iterations:
+                    logger.info("Dev mode: exiting after %s iteration(s)", iteration)
                     break
                 
-                # Sleep until next check (e.g., daily)
-                import time
-                time.sleep(86400)  # 24 hours
+                # Sleep until next check (e.g., daily); in dev use short sleep for multi-iteration testing
+                sleep_seconds = 86400  # 24 hours
+                if dev_mode:
+                    sleep_seconds = int(os.getenv('FABRIC_DEV_SLEEP_SECONDS', '2'))
+                time.sleep(sleep_seconds)
                 
         except KeyboardInterrupt:
             logger.info("Strategy stopped by user")

@@ -74,9 +74,29 @@ The strategy starts a Fabric run with `symbol="PORTFOLIO"` (multi-asset). The **
 - [ ] **Execution:** `config.yaml` → `execution` (chain, dex, slippage) matches the Fabric deployment environment.
 - [ ] **After deploy:** In Fabric portal, confirm the run shows the expected portfolio constituents and that trades appear with correct symbols and sizes; check logs for any `report_trade` or execution errors.
 
+## 12-week momentum: making sure the bot has the data
+
+The 12-week momentum indicator needs **at least 84 days of daily close prices** per coin. The strategy loads this in `before_loop()` so momentum and regime inputs are available.
+
+**How the bot gets the data:**
+
+1. **Fabric SDK (if available)** – If the Fabric client exposes something like `get_candles(symbol, timeframe, limit)`, the strategy tries that first and builds a daily price series for each token.
+2. **Price fetcher (fallback)** – If Fabric doesn’t provide historical prices, the strategy uses a price fetcher (e.g. CoinGecko) keyed by `config.yaml` → `tokens` → `coingecko_id` for each coin. It requests `data.historical_days` (default 200) days so 12-week momentum (84 days) and MA spreads (200 days) have enough data.
+
+**What you need to do:**
+
+- **Config:** In `config.yaml` → `data` keep `historical_days: 200` and `momentum_period: 84`.
+- **Tokens:** Each entry under `tokens` should have a `coingecko_id` (e.g. `bitcoin`, `ethereum`, `solana`, `chainlink`, `aave`). The price fetcher uses this to request history from CoinGecko.
+- **If using CoinGecko:** Free tier works with rate limits; set `COINGECKO_API_KEY` in the strategy’s environment (Fabric secrets or `.env`) for higher limits.
+- **If Fabric supplies data:** Ensure the deployment has access to historical candles (e.g. 1d) for the portfolio symbols.
+
+**Check that it works:** After startup, logs should show either "Loaded … days of prices from Fabric SDK" or "Loaded … days of prices from price fetcher". If you see "No historical prices loaded; 12-week momentum … will be empty", fix the data source and config above.
+
+---
+
 ## Local vs production
 
-- **Local (`fabric-cli dev`):** Uses the same `config.yaml`; trades are reported to the local Fabric platform. Execution may be simulated or use a testnet; confirm in your Fabric dev setup.
-- **Production:** Use the same checklist; ensure production `config.yaml` (or overrides) has the correct `tokens` and `execution` for the chain and DEX you use in production.
+- **Local (`fabric-cli dev`):** Uses the same `config.yaml`; trades are reported to the local Fabric platform. With `FABRIC_DEV_MODE=true`, the price fetcher is mocked so 12w momentum is empty unless you point at real data.
+- **Production:** Use the same checklist; ensure either Fabric provides historical prices or `COINGECKO_API_KEY` is set so 12-week momentum has 84+ days of data.
 
 For more on Fabric deployment and Type-2 verification, see **STRATEGIST_USAGE_GUIDE.md** → Deployment → “Type-2 portfolio and swap verification”.

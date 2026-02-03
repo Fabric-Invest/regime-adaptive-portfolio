@@ -4,7 +4,7 @@ A dynamic regime-adaptive crypto portfolio strategy built on the Fabric SDK. Thi
 
 ## Overview
 
-This strategy implements Brian C. Butler's methodology for regime-adaptive portfolio management, optimized through forward-walk validation. It dynamically allocates across:
+This strategy implements a regime-adaptive portfolio management, optimized through forward-walk validation. It dynamically allocates across:
 
 - **WBTC** (Wrapped Bitcoin)
 - **WETH** (Wrapped Ethereum)
