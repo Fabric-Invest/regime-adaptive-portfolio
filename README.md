@@ -122,47 +122,6 @@ fabric-cli backtest \
   --initial-capital 10000
 ```
 
-## Deployment
-
-### 1. Push to GitHub
-
-```bash
-git add .
-git commit -m "Initial strategy implementation"
-git push origin main
-```
-
-### 2. Connect GitHub in Fabric Portal
-
-1. Navigate to Admin Portal → Deployments
-2. Click "Connect GitHub"
-3. Authorize Fabric to access your repository
-
-### 3. Create Strategy
-
-1. Go to Strategies → New Strategy
-2. Fill in strategy details
-3. Link your GitHub repository
-
-### 4. Build and Deploy
-
-1. Create a new version in the portal
-2. Build triggers automatically
-3. Deploy when build completes
-
-### CLI Deployment
-
-```bash
-# Validate strategy
-fabric-cli validate
-
-# Push to platform
-fabric-cli push
-
-# Deploy
-fabric-cli deploy regime-adaptive-portfolio --env production
-```
-
 ## Architecture
 
 ```
