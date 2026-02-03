@@ -1,0 +1,111 @@
+# Regime-Adaptive Portfolio Strategy Configuration
+# Fabric SDK Type-2 Portfolio Rebalancing Strategy
+
+name: "Regime-Adaptive Portfolio"
+type: "type-2"
+description: "Dynamic regime-adaptive crypto portfolio with DEX execution based on Brian C. Butler's methodology"
+version: "1.0.0"
+
+# Trading parameters
+timeframe: "1d"
+initial_capital: 10000
+
+# Core tokens with EVM addresses (Ethereum mainnet)
+tokens:
+  bitcoin:
+    symbol: "WBTC"
+    coingecko_id: "bitcoin"
+    address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+    decimals: 8
+  ethereum:
+    symbol: "WETH"
+    coingecko_id: "ethereum"
+    address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    decimals: 18
+  solana:
+    symbol: "WSOL"
+    coingecko_id: "solana"
+    # Wrapped SOL on Ethereum via Wormhole bridge
+    address: "0xD31a59c85aE9D8edEFeC411D448f90841571b89c"
+    decimals: 9
+  chainlink:
+    symbol: "LINK"
+    coingecko_id: "chainlink"
+    address: "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+    decimals: 18
+  aave:
+    symbol: "AAVE"
+    coingecko_id: "aave"
+    address: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
+    decimals: 18
+
+# Execution configuration
+execution:
+  chain: "ethereum"
+  dex: "0x"
+  slippage_tolerance: 0.01  # 1%
+  gas_buffer: 1.2  # 20% gas buffer
+
+# Regime detection parameters (optimized from forward-walk validation)
+regime:
+  weights:
+    momentum: 1.2
+    volatility: -0.8  # Negative: high volatility = bearish
+    funding: 0.5
+    ma_spread: 0.5
+    divergence: 0.5
+  
+  # Hysteresis thresholds
+  thresholds:
+    bull_enter: 0.5
+    bull_exit: 0.1
+    bear_enter: -0.7
+    bear_exit: -0.3
+  
+  # Smoothing parameters
+  ema_span: 21
+  min_duration_days: 14
+
+# Allocation parameters (optimized from forward-walk validation)
+allocation:
+  bull:
+    top_n: 3
+    exposure: 0.95
+  neutral:
+    top_n: 2
+    exposure: 0.75
+  bear:
+    crash:
+      top_n: 1
+      exposure: 0.25
+      threshold: -0.05  # BTC 12-week momentum threshold
+    base:
+      top_n: 2
+      exposure: 0.45
+    transition:
+      top_n: 2
+      exposure: 0.65
+  funding_tilt: 0.025
+
+# Data parameters
+data:
+  historical_days: 200  # Days of history to maintain
+  momentum_period: 84   # 12 weeks in days
+  
+# Rebalancing schedule
+rebalancing:
+  schedule: "weekly"  # "weekly" or "daily"
+  day_of_week: 4      # Friday (0=Monday, 4=Friday)
+  on_regime_change: true
+
+# Platform integration
+platform:
+  api_url: "https://api.fabricinvest.com"
+  enable_metrics: true
+  enable_notifications: true
+
+# Notification settings
+notifications:
+  regime_change: true
+  rebalance: true
+  error_alerts: true

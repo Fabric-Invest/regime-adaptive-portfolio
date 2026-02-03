@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Error Alert</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #721c24;
+            font-size: 24px;
+        }
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .error-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            margin-top: 15px;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .error-details {
+            background-color: #fff5f5;
+            border: 1px solid #f8d7da;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .error-type {
+            font-weight: 600;
+            color: #721c24;
+            margin-bottom: 10px;
+        }
+        .error-message {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .details {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            color: #666;
+        }
+        .detail-value {
+            font-weight: 600;
+        }
+        .action-note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="error-icon">&#9888;</div>
+            <h1>Strategy Error Detected</h1>
+            <div class="error-badge">{{ error_severity | default('Error') }}</div>
+        </div>
+        
+        <div class="error-details">
+            <div class="error-type">{{ error_type }}</div>
+            <div class="error-message">{{ error_message }}</div>
+        </div>
+        
+        <div class="details">
+            <div class="detail-row">
+                <span class="detail-label">Timestamp</span>
+                <span class="detail-value">{{ timestamp }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Component</span>
+                <span class="detail-value">{{ component | default('Unknown') }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Current Regime</span>
+                <span class="detail-value">{{ current_regime | default('Unknown') }}</span>
+            </div>
+        </div>
+        
+        <div class="action-note">
+            <strong>Recommended Action:</strong><br>
+            {% if error_severity == 'Critical' %}
+            The strategy has been paused. Please review the error and restart manually.
+            {% else %}
+            The strategy will attempt to continue operation. Monitor for recurring issues.
+            {% endif %}
+        </div>
+        
+        <div class="footer">
+            Regime-Adaptive Portfolio Strategy<br>
+            This is an automated error notification.
+        </div>
+    </div>
+</body>
+</html>
